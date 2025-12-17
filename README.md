@@ -1,116 +1,60 @@
 <!DOCTYPE html>
-<html lang="de">
+<html>
 <head>
-    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Neon Pulse - GitHub Edition</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        body { margin: 0; background: #000d1a; overflow: hidden; touch-action: none; }
         canvas { display: block; }
-        #ui {
-            position: absolute;
-            top: env(safe-area-inset-top, 20px);
-            left: 50%;
-            transform: translateX(-50%);
-            color: #0ff;
-            text-align: center;
-            pointer-events: none;
-            z-index: 10;
-        }
-        #score { font-size: 48px; font-weight: bold; text-shadow: 0 0 20px #0ff; }
-        #best { font-size: 14px; opacity: 0.7; letter-spacing: 2px; }
+        #ui { position: absolute; top: 20px; width: 100%; text-align: center; color: white; font-family: Arial; font-size: 30px; pointer-events: none; }
     </style>
 </head>
 <body>
+    <div id="ui">Punkte: <span id="s">0</span></div>
+    <canvas id="c"></canvas>
+    <script>
+        const canvas = document.getElementById('c');
+        const ctx = canvas.getContext('2d');
+        let w = canvas.width = window.innerWidth;
+        let h = canvas.height = window.innerHeight;
+        let score = 0, speed = 8, active = true, obstacles = [];
+        let player = { x: 80, y: h-150, s: 40, dy: 0, g: 0.8, jump: -15, grounded: false };
 
-    <div id="ui">
-        <div id="score">0</div>
-        <div id="best">BEST: 0</div>
-    </div>
-    <canvas id="gameCanvas"></canvas>
+        function reset() { score = 0; obstacles = []; player.dy = 0; active = true; document.getElementById('s').innerText = "0"; }
 
-<script>
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const scoreElement = document.getElementById('score');
-    const bestElement = document.getElementById('best');
+        function loop() {
+            if (!active) return requestAnimationFrame(loop);
+            ctx.fillStyle = "#000d1a"; ctx.fillRect(0,0,w,h);
+            
+            // Boden
+            ctx.fillStyle = "#0ff"; ctx.fillRect(0, h-100, w, 2);
 
-    function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resize);
-    resize();
+            // Spieler
+            player.dy += player.g; player.y += player.dy;
+            if (player.y > h-140) { player.y = h-140; player.dy = 0; player.grounded = true; }
+            ctx.fillStyle = "#0ff"; ctx.fillRect(player.x, player.y, player.s, player.s);
 
-    // Game State
-    let gravity = 0.8;
-    let gameSpeed = 8;
-    let score = 0;
-    let bestScore = localStorage.getItem('neonPulseBest') || 0;
-    bestElement.innerText = "BEST: " + bestScore;
-    let gameActive = true;
-    let frameCount = 0;
-
-    const player = {
-        x: 120, y: 0, size: 42, dy: 0, 
-        jumpForce: -15, grounded: false, rotation: 0
-    };
-
-    let obstacles = [];
-
-    function spawn() {
-        const groundY = canvas.height - 100;
-        const rand = Math.random();
-        
-        if (rand < 0.6) {
-            // PLATTFORM
-            const h = 130 + Math.random() * 100;
-            const w = 180 + Math.random() * 100;
-            obstacles.push({ x: canvas.width, y: groundY - h, w: w, h: 35, type: 'platform' });
-        } else {
-            // SPIKE
-            obstacles.push({ x: canvas.width, y: groundY, w: 45, h: 45, type: 'spike' });
-        }
-    }
-
-    function reset() {
-        if (score > bestScore) {
-            bestScore = score;
-            localStorage.setItem('neonPulseBest', bestScore);
-            bestElement.innerText = "BEST: " + bestScore;
-        }
-        score = 0; obstacles = []; player.y = 100; player.dy = 0;
-        gameSpeed = 8; gameActive = true; scoreElement.innerText = "0";
-    }
-
-    function update() {
-        if (!gameActive) return;
-
-        player.dy += gravity;
-        player.y += player.dy;
-        
-        let onAnything = false;
-        const groundY = canvas.height - 100;
-
-        // Boden Check
-        if (player.y + player.size > groundY) {
-            player.y = groundY - player.size;
-            player.dy = 0;
-            onAnything = true;
+            // Hindernisse
+            if (Math.random() < 0.02) obstacles.push({x: w, y: h-140, w: 40, h: 40});
+            for (let i = obstacles.length-1; i >= 0; i--) {
+                let o = obstacles[i]; o.x -= speed;
+                ctx.fillStyle = "#f0f"; ctx.fillRect(o.x, o.y, o.w, o.h);
+                
+                // Kollision
+                if (player.x < o.x + o.w && player.x + player.s > o.x && player.y + player.s > o.y) {
+                    active = false; setTimeout(reset, 1000);
+                }
+                if (o.x + o.w < 0) { obstacles.splice(i, 1); score++; document.getElementById('s').innerText = score; }
+            }
+            requestAnimationFrame(loop);
         }
 
-        // Hindernisse
-        frameCount++;
-        if (frameCount % 65 === 0) spawn();
+        window.addEventListener('touchstart', (e) => { 
+            if (player.grounded) { player.dy = player.jump; player.grounded = false; }
+            e.preventDefault();
+        }, {passive: false});
 
-        for (let i = obstacles.length - 1; i >= 0; i--) {
-            let o = obstacles[i];
-            o.x -= gameSpeed;
+        loop();
+    </script>
+</body>
+</html>
 
-            if (o.type === 'platform') {
-                // Präzises Landen
-                const isAbove = player.y + player.size <= o.y + 20;
-                const isFalling = player.dy >= 0;
-                const isWithinX = player.x + player.size > o.x + 10 && player.x < o.x + o.w - 10;
-
-                if (isFalling && isAbove && isWithinX && player.y + player.size + player.dy >= o.y) {
