@@ -1,60 +1,119 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BlockCraft 2D</title>
     <style>
-        body { margin: 0; background: #000d1a; overflow: hidden; touch-action: none; }
-        canvas { display: block; }
-        #ui { position: absolute; top: 20px; width: 100%; text-align: center; color: white; font-family: Arial; font-size: 30px; pointer-events: none; }
+        body { margin: 0; overflow: hidden; background: #87CEEB; touch-action: none; font-family: sans-serif; }
+        canvas { display: block; image-rendering: pixelated; }
+        #inventory {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 10px; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px;
+        }
+        .slot { width: 40px; height: 40px; border: 2px solid #fff; }
+        #debug { position: absolute; top: 10px; left: 10px; color: white; pointer-events: none; }
     </style>
 </head>
 <body>
-    <div id="ui">Punkte: <span id="s">0</span></div>
-    <canvas id="c"></canvas>
+    <div id="debug">Tippe Blöcke zum Abbauen an</div>
+    <canvas id="gameCanvas"></canvas>
+
     <script>
-        const canvas = document.getElementById('c');
+        const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        let w = canvas.width = window.innerWidth;
-        let h = canvas.height = window.innerHeight;
-        let score = 0, speed = 8, active = true, obstacles = [];
-        let player = { x: 80, y: h-150, s: 40, dy: 0, g: 0.8, jump: -15, grounded: false };
 
-        function reset() { score = 0; obstacles = []; player.dy = 0; active = true; document.getElementById('s').innerText = "0"; }
+        // Einstellungen
+        const blockSize = 40;
+        let world = [];
+        const cols = Math.ceil(window.innerWidth / blockSize) + 1;
+        const rows = Math.ceil(window.innerHeight / blockSize);
 
-        function loop() {
-            if (!active) return requestAnimationFrame(loop);
-            ctx.fillStyle = "#000d1a"; ctx.fillRect(0,0,w,h);
-            
-            // Boden
-            ctx.fillStyle = "#0ff"; ctx.fillRect(0, h-100, w, 2);
+        // Spieler
+        const player = {
+            x: 100, y: 0, w: 30, h: 50,
+            dy: 0, speed: 5, jump: -12, g: 0.6
+        };
 
-            // Spieler
-            player.dy += player.g; player.y += player.dy;
-            if (player.y > h-140) { player.y = h-140; player.dy = 0; player.grounded = true; }
-            ctx.fillStyle = "#0ff"; ctx.fillRect(player.x, player.y, player.s, player.s);
-
-            // Hindernisse
-            if (Math.random() < 0.02) obstacles.push({x: w, y: h-140, w: 40, h: 40});
-            for (let i = obstacles.length-1; i >= 0; i--) {
-                let o = obstacles[i]; o.x -= speed;
-                ctx.fillStyle = "#f0f"; ctx.fillRect(o.x, o.y, o.w, o.h);
-                
-                // Kollision
-                if (player.x < o.x + o.w && player.x + player.s > o.x && player.y + player.s > o.y) {
-                    active = false; setTimeout(reset, 1000);
+        function initWorld() {
+            for (let x = 0; x < cols; x++) {
+                world[x] = [];
+                for (let y = 0; y < rows; y++) {
+                    let type = 0; // Luft
+                    let groundLevel = 8;
+                    if (y > groundLevel) type = 2; // Erde
+                    if (y === groundLevel) type = 1; // Gras
+                    if (y > groundLevel + 4) type = 3; // Stein
+                    world[x][y] = type;
                 }
-                if (o.x + o.w < 0) { obstacles.splice(i, 1); score++; document.getElementById('s').innerText = score; }
             }
-            requestAnimationFrame(loop);
         }
 
-        window.addEventListener('touchstart', (e) => { 
-            if (player.grounded) { player.dy = player.jump; player.grounded = false; }
-            e.preventDefault();
-        }, {passive: false});
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        loop();
+            // Welt zeichnen
+            for (let x = 0; x < cols; x++) {
+                for (let y = 0; y < rows; y++) {
+                    if (world[x][y] === 0) continue;
+                    
+                    if (world[x][y] === 1) ctx.fillStyle = '#4CAF50'; // Gras
+                    if (world[x][y] === 2) ctx.fillStyle = '#8B4513'; // Erde
+                    if (world[x][y] === 3) ctx.fillStyle = '#808080'; // Stein
+                    
+                    ctx.fillRect(x * blockSize, y * blockSize, blockSize, blockSize);
+                    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                    ctx.strokeRect(x * blockSize, y * blockSize, blockSize, blockSize);
+                }
+            }
+
+            // Spieler zeichnen
+            ctx.fillStyle = '#FF0000';
+            ctx.fillRect(player.x, player.y, player.w, player.h);
+
+            update();
+            requestAnimationFrame(draw);
+        }
+
+        function update() {
+            player.dy += player.g;
+            player.y += player.dy;
+
+            // Einfache Boden-Kollision (auf Gras-Ebene)
+            const pCol = Math.floor((player.x + player.w/2) / blockSize);
+            const pRow = Math.floor((player.y + player.h) / blockSize);
+
+            if (world[pCol] && world[pCol][pRow] !== 0) {
+                player.y = pRow * blockSize - player.h;
+                player.dy = 0;
+            }
+        }
+
+        // Interaktion: Block abbauen
+        canvas.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            const bX = Math.floor(touch.clientX / blockSize);
+            const bY = Math.floor(touch.clientY / blockSize);
+            
+            if (world[bX] && world[bX][bY] !== undefined) {
+                world[bX][bY] = 0; // Block wird zu Luft
+            }
+            
+            // Sprung-Check (wenn linke Bildschirmhälfte getippt wird)
+            if (touch.clientX < window.innerWidth / 2 && player.dy === 0) {
+                player.dy = player.jump;
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        initWorld();
+        draw();
     </script>
 </body>
 </html>
-
